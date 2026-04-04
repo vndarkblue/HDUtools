@@ -66,7 +66,9 @@ def fetch_timetable_data(next_week=False):
     }
 
     try:
-        response = requests.post(url, headers=headers, data=data)
+        session = requests.Session()
+        session.trust_env = False  # Ignore system/env proxy settings (fixes SOCKS proxy errors)
+        response = session.post(url, headers=headers, data=data)
         response.raise_for_status()
 
         # Parse the returned HTML using the existing logic
