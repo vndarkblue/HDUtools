@@ -1,6 +1,6 @@
 import os
 import sys
-import time
+from datetime import date, timedelta
 import argparse
 import requests
 import json
@@ -12,8 +12,7 @@ from extract_timetable import parse_html_to_json
 SKILL_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 TIMETABLE_CACHE_PATH = os.path.join(SKILL_ROOT, "timetable.json")
 
-# One week in milliseconds
-ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000
+
 
 
 def load_cached_timetable():
@@ -54,14 +53,13 @@ def fetch_timetable_data(next_week=False):
         "Cookie": cookies_raw,
     }
 
-    # Generate current Unix time in milliseconds, optionally shifted by one week
-    current_time_ms = int(time.time() * 1000)
-    if next_week:
-        current_time_ms += ONE_WEEK_MS
+    # API accepts any valid date string "DD/MM/YYYY" within the target week
+    offset = timedelta(weeks=1) if next_week else timedelta(0)
+    date_str = (date.today() + offset).strftime("%d/%m/%Y")
 
     url = "https://sinhvien.hdu.edu.vn/SinhVien/GetDanhSachLichTheoTuan"
     data = {
-        "pNgayHienTai": current_time_ms,
+        "pNgayHienTai": date_str,
         "pLoaiLich": 0,
     }
 
