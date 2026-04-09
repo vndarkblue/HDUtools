@@ -4,43 +4,43 @@ from datetime import date, timedelta
 import argparse
 import requests
 import json
-from dotenv import load_dotenv
+from pathlib import Path
+from dotenv import load_dotenv, set_key
 
 from extract_timetable import parse_html_to_json
 
 # Skill root is one level up
-SKILL_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-TIMETABLE_CACHE_PATH = os.path.join(SKILL_ROOT, "timetable.json")
-
-
+SKILL_ROOT = Path(__file__).parent.parent
+TIMETABLE_CACHE_PATH = SKILL_ROOT / "timetable.json"
 
 
 def load_cached_timetable():
     """Load the previously saved timetable from timetable.json, or None if not found."""
-    if not os.path.exists(TIMETABLE_CACHE_PATH):
+    if not TIMETABLE_CACHE_PATH.exists():
         return None
     try:
-        with open(TIMETABLE_CACHE_PATH, "r", encoding="utf-8") as f:
-            return json.load(f)
+        return json.loads(TIMETABLE_CACHE_PATH.read_text(encoding="utf-8"))
     except Exception:
         return None
 
 
 def save_timetable(data):
     """Save timetable data to timetable.json."""
-    with open(TIMETABLE_CACHE_PATH, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+    TIMETABLE_CACHE_PATH.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
-def fetch_timetable_data(next_week=False):
-    # Load environment variables from .env file located in skill root
-    env_path = os.path.join(SKILL_ROOT, ".env")
-    load_dotenv(dotenv_path=env_path)
+def update_env(env_path: Path, key: str, value: str):
+    """Cập nhật hoặc thêm key=value vào file .env using python-dotenv."""
+    # set_key handles everything for us
+    set_key(str(env_path), key, value)
 
-    # Get the raw COOKIES string from .env
-    cookies_raw = os.getenv("COOKIES")
-    if not cookies_raw:
-        return {"error": "COOKIES not found in .env"}
+
+def fetch_timetable_data(cookie_value, next_week=False):
+    # Đảm bảo có tiền tố ASC.AUTH= nếu người dùng chỉ cung cấp token
+    if "ASC.AUTH=" not in cookie_value:
+        cookie_header = f"ASC.AUTH={cookie_value}"
+    else:
+        cookie_header = cookie_value
 
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:148.0) Gecko/20100101 Firefox/148.0",
@@ -50,7 +50,7 @@ def fetch_timetable_data(next_week=False):
         "X-Requested-With": "XMLHttpRequest",
         "Origin": "https://sinhvien.hdu.edu.vn",
         "Connection": "keep-alive",
-        "Cookie": cookies_raw,
+        "Cookie": cookie_header,
     }
 
     # API accepts any valid date string "DD/MM/YYYY" within the target week
@@ -96,10 +96,53 @@ def main():
         action="store_true",
         help="Lấy thời khoá biểu của tuần sau thay vì tuần hiện tại.",
     )
+    parser.add_argument("--cookie", "-k", type=str, help="Giá trị cookie ASC.AUTH cung cấp trực tiếp.")
+    parser.add_argument("--cookie-file", type=str, help="Đường dẫn file chứa cookie.")
+    parser.add_argument("--env", type=str, default=".env", help="Đường dẫn file .env.")
     args = parser.parse_args()
 
-    result = fetch_timetable_data(next_week=args.next_week)
+    # ── Xác định Cookie ──
+    cookie = None
+    from_cli = False
+    env_path = SKILL_ROOT / args.env
 
+    if args.cookie:
+        cookie = args.cookie.strip()
+        from_cli = True
+
+    if not cookie and args.cookie_file:
+        cf_path = Path(args.cookie_file)
+        if cf_path.exists():
+            content = cf_path.read_text(encoding="utf-8").strip()
+            for line in content.splitlines():
+                line = line.strip()
+                if line and not line.startswith("#"):
+                    if "=" in line and ("ASC.AUTH" in line or "COOKIES" in line):
+                        _, _, val = line.partition("=")
+                        cookie = val.strip().strip('"').strip("'")
+                    else:
+                        cookie = line
+                    break
+        else:
+            sys.exit(f"[LỖI] Không tìm thấy file cookie: {args.cookie_file}")
+
+    if not cookie:
+        if env_path.exists():
+            load_dotenv(dotenv_path=env_path)
+            cookie = os.getenv("COOKIES", "")
+
+    if not cookie:
+        sys.exit("[LỖI] Thiếu cookie. Hãy dùng --cookie, --cookie-file hoặc .env")
+
+    # ── Fetch ──
+    result = fetch_timetable_data(cookie_value=cookie, next_week=args.next_week)
+
+    # ── Cập nhật .env nếu thành công ──
+    if from_cli and not (isinstance(result, dict) and "error" in result):
+        update_env(env_path, "COOKIES", cookie)
+        print(f"[INFO] Đã cập nhật COOKIES vào {env_path.name}", file=sys.stderr)
+
+    # ── Xử lý kết quả ──
     if args.check_update:
         cached = load_cached_timetable()
         has_update = result != cached
@@ -110,8 +153,6 @@ def main():
             "new": result,
         }
 
-        # Save the freshly fetched timetable AFTER building the output,
-        # so the caller still has the old data available for diffing.
         if not isinstance(result, dict) or "error" not in result:
             save_timetable(result)
 
