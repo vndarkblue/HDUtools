@@ -38,6 +38,26 @@ def load_env(env_path: Path) -> dict:
     return env
 
 
+def update_env(env_path: Path, key: str, value: str):
+    """Cập nhật hoặc thêm key=value vào file .env."""
+    lines = []
+    found = False
+    if env_path.exists():
+        for line in env_path.read_text(encoding="utf-8").splitlines():
+            if line.strip().startswith(f"{key}=") or line.strip().startswith(f"{key} ="):
+                lines.append(f'{key}="{value}"')
+                found = True
+            else:
+                lines.append(line)
+    
+    if not found:
+        lines.append(f'{key}="{value}"')
+    
+    # Đảm bảo thư mục tồn tại
+    env_path.parent.mkdir(parents=True, exist_ok=True)
+    env_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
 # ───────────────────────── Fetch HTML ────────────────────────────
 URL = "https://sinhvien.hdu.edu.vn/ket-qua-hoc-tap.html"
 
@@ -367,10 +387,18 @@ def main():
 
     # ── Xác định Cookie ──
     cookie = None
+    from_cli = False
+
+    # Đường dẫn .env
+    env_path = Path(args.env)
+    if not env_path.is_absolute():
+        # Tìm .env ở thư mục cha của script (thư mục gốc của skill)
+        env_path = Path(__file__).parent.parent / env_path
 
     # 1. Từ command line --cookie
     if args.cookie:
         cookie = args.cookie.strip()
+        from_cli = True
 
     # 2. Từ file --cookie-file
     if not cookie and args.cookie_file:
@@ -380,7 +408,6 @@ def main():
             for line in content.splitlines():
                 line = line.strip()
                 if line and not line.startswith("#"):
-                    # Nếu dòng có dạng KEY=VAL (giống .env), lấy VAL
                     if "=" in line and ("ASC.AUTH" in line or "COOKIES" in line):
                         _, _, val = line.partition("=")
                         cookie = val.strip().strip('"').strip("'")
@@ -392,20 +419,21 @@ def main():
 
     # 3. Mặc định từ .env
     if not cookie:
-        env_path = Path(args.env)
-        if not env_path.is_absolute():
-            # Tìm .env ở thư mục cha của script (thư mục gốc của skill)
-            env_path = Path(__file__).parent.parent / env_path
-        
         if env_path.exists():
             env = load_env(env_path)
             cookie = env.get("COOKIES", "")
 
     if not cookie:
         sys.exit("[LỖI] Thiếu cookie. Hãy dùng --cookie, --cookie-file hoặc thiết lập file .env")
+
     print(f"[INFO] Đang fetch từ {URL} ...", file=sys.stderr)
     html = fetch_html(cookie)
     print("[INFO] Fetch thành công.", file=sys.stderr)
+
+    # ── Lưu vào .env nếu lấy thành công từ CLI ──
+    if from_cli:
+        update_env(env_path, "COOKIES", cookie)
+        print(f"[INFO] Đã cập nhật COOKIES vào {env_path}", file=sys.stderr)
 
     # ── Parse ──
     data = parse_grades(html)
