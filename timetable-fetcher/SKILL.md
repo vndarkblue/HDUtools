@@ -18,17 +18,20 @@ This skill allows the Agent to automatically fetch timetable data from the `sinh
 ## Usage
 
 ```bash
-# Fetch current week's timetable (default)
+# Fetch current week's timetable (default uses .env)
 python scripts/fetch_timetable.py
+
+# Use cookie directly from CLI (updates .env automatically)
+python scripts/fetch_timetable.py --cookie "your_cookie_here"
+
+# Use cookie from a file
+python scripts/fetch_timetable.py --cookie-file cookie.txt
 
 # Fetch next week's timetable
 python scripts/fetch_timetable.py --next-week
 
 # Check for updates vs. cached timetable.json
 python scripts/fetch_timetable.py --check-update
-
-# Flags can be combined
-python scripts/fetch_timetable.py --check-update --next-week
 ```
 
 ### Flags
@@ -36,7 +39,10 @@ python scripts/fetch_timetable.py --check-update --next-week
 | Flag | Short | Description |
 |------|-------|-------------|
 | `--next-week` | `-n` | Shifts the request timestamp by +7 days so the server returns next week's schedule. |
-| `--check-update` | `-c` | Compares the freshly fetched timetable against `timetable.json`. Returns a structured object (see below). The cache file is updated **after** the output is built. |
+| `--check-update` | `-c` | Compares the freshly fetched timetable against `timetable.json`. |
+| `--cookie` | `-k` | Provides the `ASC.AUTH` cookie value directly. Updates `.env` on success. |
+| `--cookie-file` | | Provides a path to a file containing the cookie value. |
+| `--env` | | Path to the `.env` file (defaults to `.env` in skill root). |
 
 ### `--check-update` output format
 
