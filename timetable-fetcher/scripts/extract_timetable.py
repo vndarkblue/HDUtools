@@ -85,6 +85,8 @@ def parse_html_to_json(content):
                     
                     period = ""
                     room = "N/A"
+                    exam_time = ""
+                    event_type = "class"
                     
                     p_tags = block.find_all('p')
                     for p in p_tags:
@@ -98,12 +100,20 @@ def parse_html_to_json(content):
                              parts = text.split(":")
                              if len(parts) > 1:
                                 room = parts[1].strip()
+                        elif "Giờ thi" in text and ":" in text:
+                            parts = text.split(":")
+                            if len(parts) > 1:
+                                exam_time = parts[1].strip()
+                                event_type = "exam"
                     
                     class_info = {
                         "subject": subject_name,
                         "period": period,
-                        "room": room
+                        "room": room,
+                        "event_type": event_type
                     }
+                    if exam_time:
+                        class_info["exam_time"] = exam_time
                     
                     data_by_day[current_date].append(class_info)
 
